@@ -5,7 +5,7 @@ from frontend.utils.chat import (
     get_openai_model_choices,
     get_categories,
     search_initial,
-    search_product_listings, fetch_chat_sessions
+    search_product_listings, fetch_chat_sessions, process_selected_chat_session
 )
 
 load_dotenv()
@@ -64,6 +64,8 @@ def qa_interface():
         model = st.selectbox("Model", get_openai_model_choices() or ["gpt-3.5-turbo"])
         category = st.selectbox("Category", get_categories() or ["general"])
         selected_chat_session = st.selectbox("Chat Session", options=["New Chat"] + fetch_chat_sessions())
+        if selected_chat_session:
+            st.session_state.chat_session_id = process_selected_chat_session(selected_chat_session)
 
 
         if st.button("Clear Chat"):
@@ -98,7 +100,7 @@ def qa_interface():
             if len(user_messages) == 1:
                 # Initial search
                 with st.spinner("Processing initial search..."):
-                    response = search_initial(model, prompt, category, selected_chat_session)
+                    response = search_initial(model, prompt, category, selected_chat_session, st.session_state.chat_history)
                     if isinstance(response, dict):
                         rag_output = response.get("response", {})
                         products = rag_output.get("products", [])
