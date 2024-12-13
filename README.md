@@ -56,7 +56,7 @@ Shopping Agent aims to revolutionize the online shopping experience by leveragin
 2. Install dependencies:
    ```bash
    # Add specific installation instructions
-   pip install -r requirements.txt
+   poetry install --dev
    ```
 
 3. Set up environment variables:
@@ -70,6 +70,14 @@ Shopping Agent aims to revolutionize the online shopping experience by leveragin
    # Add specific run instructions
    docker-compose up
    ```
+
+5. Access the Airflow UI at `http://localhost:8080` to monitor and manage the pipeline.
+
+6. Run the frontend application:
+   ```
+   streamlit run frontend/app.py
+   ```
+
 
 ## Project Structure
 ```
