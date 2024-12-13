@@ -14,17 +14,18 @@ load_dotenv()
 def qa_interface():
     st.title("Search Interface")
 
-    # Initialize chat history if not present
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = [
             {"role": "assistant", "content": "Hello! How can I help you today?"}
         ]
+    if "recommended_products" not in st.session_state:
+        st.session_state.recommended_products = []
 
-    # Fetch models and categories (expected to return lists)
+    # Fetch models/categories
     models = get_openai_model_choices() or []
     categories = get_categories() or []
 
-    # Sidebar settings
+    # Sidebar
     with st.sidebar:
         st.title("🔧 Settings")
         model = st.selectbox("Model", models if models else ["gpt-3.5-turbo"])
@@ -33,42 +34,52 @@ def qa_interface():
             st.session_state.chat_history = [
                 {"role": "assistant", "content": "Hello! How can I help you today?"}
             ]
+            st.session_state.recommended_products = []
 
-    # Display existing chat history
+    # Display chat history
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # User input for the prompt
+    # Prompt input
     prompt = st.chat_input("Enter your prompt:")
 
     if prompt:
-        # Add the user's message to chat history
         st.session_state.chat_history.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Determine which endpoint to call
         user_messages = [m for m in st.session_state.chat_history if m["role"] == "user"]
+        assistant_reply = ""
 
         if len(user_messages) == 1:
-            # If this is the first user query after greeting -> call /search/initial
+            # First user query -> call /search/initial
             with st.spinner("Performing initial search..."):
                 response = search_initial(model, prompt, category)
-
-                # Debug print to see what search_initial returns
                 st.write("Debug: Raw response from search_initial:", response)
 
                 if isinstance(response, dict):
-                    st.write("Debug: search_initial response is a dict")
-                    # According to the example you gave, the response looks like:
-                    # {
-                    #   "response": "...",
-                    #   "tools_used": "vector_search"
-                    # }
-                    assistant_reply = response.get("response", "No 'response' field found.")
+                    rag_output = response.get("response", {})
+                    products = rag_output.get("products", [])
+                    reasoning_summary = rag_output.get("reasoning_summary", "")
+
+                    if products:
+                        assistant_reply += "Based on the community discussions, here are some recommended products:\n\n"
+                        st.session_state.recommended_products = []  # reset
+
+                        for idx, product in enumerate(products, start=1):
+                            product_name = product.get("product_name", "Unknown Product")
+                            reason = product.get("reason_for_recommendation", "No reason provided.")
+                            st.session_state.recommended_products.append(product_name)
+
+                            assistant_reply += f"**{idx}. {product_name}**\n"
+                            assistant_reply += f"{reason}\n\n"
+
+                        if reasoning_summary:
+                            assistant_reply += f"**Reasoning Summary:** {reasoning_summary}\n"
+                    else:
+                        assistant_reply = "No products found in the RAG response."
                 elif isinstance(response, str):
-                    st.write("Debug: search_initial response is a string")
                     assistant_reply = response
                 else:
                     st.write("Debug: Unexpected response type for initial search:", type(response))
@@ -78,26 +89,13 @@ def qa_interface():
             # Subsequent queries -> call /search/product-listings
             with st.spinner("Searching products..."):
                 response = search_product_listings(prompt)
-
-                # Debug print to see what search_product_listings returns
                 st.write("Debug: Raw response from search_product_listings:", response)
 
                 if isinstance(response, list):
-                    st.write("Debug: response is a list of products")
-                    products = response
-                    if products:
+                    if response:
                         assistant_reply = "Here are some products I found:\n\n"
-                        for p in products:
-                            title = p.get("title", "N/A")
-                            price = p.get("price", "N/A")
-                            product_url = p.get("product_url", "#")
-                            merchant_name = p.get("merchant_name", "N/A")
-                            assistant_reply += (
-                                f"- **{title}**\n"
-                                f"  Price: {price}\n"
-                                f"  Merchant: {merchant_name}\n"
-                                f"  URL: {product_url}\n\n"
-                            )
+                        # Instead of just listing them in text, let's create the card layout:
+                        assistant_reply += create_cards(response)
                     else:
                         assistant_reply = "No products found."
                 elif isinstance(response, dict):
@@ -110,15 +108,72 @@ def qa_interface():
                     st.write("Debug: Unexpected response type for product listings:", type(response))
                     assistant_reply = "Error: Unexpected response format from product listings."
 
-        # Display the assistant's reply
         with st.chat_message("assistant"):
             st.markdown(assistant_reply)
+        st.session_state.chat_history.append({"role": "assistant", "content": assistant_reply})
 
-        # Add the assistant's message to the chat history
-        st.session_state.chat_history.append({
-            "role": "assistant",
-            "content": assistant_reply
-        })
+    # Show "links to buy" for each recommended product, limited to 5 listings displayed as cards
+    if st.session_state.recommended_products:
+        st.divider()
+        st.subheader("Buy These Recommended Products:")
+
+        for product_name in st.session_state.recommended_products:
+            st.markdown(f"### {product_name}")
+            with st.spinner(f"Fetching product links for: {product_name}..."):
+                pl_response = search_product_listings(product_name)
+
+            if isinstance(pl_response, list) and pl_response:
+                limited_listings = pl_response[:5]
+                # Render these 5 listings as cards
+                card_markdown = create_cards(limited_listings)
+                st.markdown(card_markdown, unsafe_allow_html=True)
+            else:
+                st.write("No links found or unexpected response.")
+            st.write("---")
+
+def create_cards(product_list):
+    """
+    Takes a list of product dicts and returns HTML for card-like layout
+    with lighter backgrounds for better readability.
+    """
+    cards_per_row = 4
+    all_rows_html = ""
+
+    for i in range(0, len(product_list), cards_per_row):
+        row_items = product_list[i : i + cards_per_row]
+        # Use a flex container for a row of cards
+        row_html = '<div style="display: flex; gap: 10px; margin-bottom: 10px;">'
+
+        for item in row_items:
+            title = item.get("title", "N/A")
+            price = item.get("price", "N/A")
+            product_url = item.get("product_url", "#")
+            merchant_name = item.get("merchant_name", "N/A")
+
+            # Card styling with a lighter background (e.g. #f0f0f0),
+            # darker text (#333), and clearer color highlights
+            card_html = f"""
+            <div style="
+                flex: 1; 
+                background-color: #f0f0f0; 
+                border-radius: 8px; 
+                padding: 15px; 
+                min-width: 150px;
+            ">
+                <p style="font-weight: bold; margin-bottom: 5px; color: #333;">{merchant_name}</p>
+                <p style="color: #d9534f; font-size: 1.1em; margin: 0;">{price}</p>
+                <p style="font-size: 0.9em; color: #333;">{title}</p>
+                <a href="{product_url}" target="_blank" 
+                   style="color: #0275d8; text-decoration: none; font-size: 0.9em;">
+                    View Product
+                </a>
+            </div>"""
+            row_html += card_html
+
+        row_html += "</div>"
+        all_rows_html += row_html
+
+    return all_rows_html
 
 if __name__ == "__main__":
     qa_interface()
