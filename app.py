@@ -13,7 +13,7 @@ def main():
 
     # Set page configuration
     st.set_page_config(
-        page_title="AI Shop Assistant",
+        page_title="Rekomme - AI Shopping Assistant",
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -70,12 +70,12 @@ def main():
     )
     logout_page = st.Page(logout, title="Log Out", icon=":material/logout:")
     user_creation_page = st.Page(create_user, title="User Registration")
-    qa_page = st.Page(qa_interface, title="Question Answering", icon=":material/chat:")
+    qa_page = st.Page(qa_interface, title="Search Interface", icon=":material/chat:")
 
     if st.session_state.logged_in:
         pg = st.navigation(
             {
-                "Question Answering & Reports": [qa_page],
+                "Rekomme Search": [qa_page],
                 "Logout": [logout_page],
             }
         )
