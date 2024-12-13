@@ -2,7 +2,8 @@ from functools import lru_cache
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+import os
+from dotenv import load_dotenv
 
 class Settings(BaseSettings, extra="ignore"):
     # AWS
@@ -48,6 +49,9 @@ class Settings(BaseSettings, extra="ignore"):
     LOG_MAX_BYTES: int = 2000000  # Default to 2MB
     LOG_BACKUP_COUNT: int = 10
 
+
+    OXYLABS_USERNAME: str
+    OXYLABS_PASSWORD: str
     model_config = SettingsConfigDict(env_file=".env")
 
     @model_validator(mode="after")
