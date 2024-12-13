@@ -31,7 +31,6 @@ x-airflow-common:
     AIRFLOW_CORE_XCOM_PICKLING: 'true'
     AIRFLOW__SCHEDULER__SCHEDULER_ZOMBIE_TASK_THRESHOLD: 1000
     AIRFLOW__SCHEDULER__LOCAL_TASK_JOB_HEARTBEAT_SEC: 100
-    AIRFLOW__CORE__DEFAULT_TASK_EXECUTION_TIMEOUT: 1000
     AIRFLOW__SCHEDULER__ZOMBIE_DETECTION_INTERVAL: 1000
 
   volumes:
@@ -39,7 +38,7 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-  user: "${AIRFLOW_UID:-50000}:0"
+  user: "${AIRFLOW_UID:-501}:0"
   depends_on:
     &airflow-common-depends-on
     redis:
@@ -208,7 +207,8 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
-      _PIP_ADDITIONAL_REQUIREMENTS: ''
+      # _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- pydantic psycopg2-binary praw }
+
     user: "0:0"
     volumes:
       - ${AIRFLOW_PROJ_DIR:-.}:/sources

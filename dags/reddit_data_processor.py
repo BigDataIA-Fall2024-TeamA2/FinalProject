@@ -9,7 +9,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
 
-
 # Additional imports
 from pinecone import Pinecone, ServerlessSpec
 import boto3
@@ -61,7 +60,7 @@ class RedditDataProcessor:
             api_key=self.pinecone_api_key
         )
 
-        # Now do stuff
+        # Check existing indexes
         existing_indexes = [index_info["name"] for index_info in pc.list_indexes()]
 
         if self.pinecone_index_name not in existing_indexes:
@@ -74,20 +73,7 @@ class RedditDataProcessor:
             while not pc.describe_index(self.pinecone_index_name).status["ready"]:
                 time.sleep(1)
 
-
         self.pc_index = pc.Index(self.pinecone_index_name)
-        # pinecone.init(
-        #     api_key=self.pinecone_api_key,
-        #     environment=self.pinecone_environment
-        # )
-        
-        # # Ensure index exists
-        # if self.pinecone_index_name not in pinecone.list_indexes():
-        #     pinecone.create_index(
-        #         name=self.pinecone_index_name,
-        #         dimension=1536,  # OpenAI embedding dimension
-        #         metric='cosine'
-        #     )
     
     def _init_embedding_model(self):
         """Initialize OpenAI embedding model"""
@@ -152,7 +138,8 @@ class RedditDataProcessor:
                 score INTEGER,
                 created_at TIMESTAMP,
                 s3_url TEXT,
-                vector_id TEXT
+                vector_id TEXT,
+                namespace TEXT
             );
             """
             cursor.execute(create_table_query)
@@ -160,14 +147,15 @@ class RedditDataProcessor:
             # Insert or update post
             insert_query = """
             INSERT INTO reddit_posts 
-            (id, title, body, author, subreddit, score, created_at, s3_url, vector_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (id, title, body, author, subreddit, score, created_at, s3_url, vector_id, namespace)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET 
             title = EXCLUDED.title,
             body = EXCLUDED.body,
             score = EXCLUDED.score,
             s3_url = EXCLUDED.s3_url,
-            vector_id = EXCLUDED.vector_id;
+            vector_id = EXCLUDED.vector_id,
+            namespace = EXCLUDED.namespace;
             """
             
             cursor.execute(insert_query, (
@@ -179,7 +167,8 @@ class RedditDataProcessor:
                 post_data.get('score', 0),
                 post_data.get('created', datetime.now()),
                 post_data.get('s3_url', ''),
-                post_data.get('vector_id', '')
+                post_data.get('vector_id', ''),
+                post_data.get('namespace', '')
             ))
             
             conn.commit()
@@ -200,7 +189,7 @@ class RedditDataProcessor:
         Process Reddit data by:
         1. Saving to S3
         2. Creating vector embeddings
-        3. Storing in Pinecone
+        3. Storing in Pinecone with metadata in a specific namespace
         4. Inserting into PostgreSQL
         
         Args:
@@ -212,6 +201,9 @@ class RedditDataProcessor:
             chunk_overlap=200
         )
         
+        # Explicitly set namespace
+        namespace = 'headphoneadvice'
+        
         # Timestamp for S3 and tracking
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
@@ -221,9 +213,6 @@ class RedditDataProcessor:
                 # Combine title and body for embedding
                 full_text = f"{row['title']} {row.get('body', '')}"
                 
-                # Split text into chunks
-                text_chunks = text_splitter.split_text(full_text)
-                
                 # Save raw data to S3
                 s3_key = f"reddit_posts/{timestamp}/{row['id']}.json"
                 s3_url = self.save_to_s3(
@@ -231,9 +220,32 @@ class RedditDataProcessor:
                     s3_key
                 )
 
-                vector_store = PineconeVectorStore(index=self.pc_index, embedding=self.embeddings)
+                vector_store = PineconeVectorStore(
+                    index=self.pc_index, 
+                    embedding=self.embeddings,
+                    namespace=namespace  # Use fixed namespace
+                )
 
-                vector_store.add_texts(full_text, id=row['id'])
+                # Prepare metadata for Pinecone
+                metadata = {
+                    'id': row['id'],
+                    'title': row['title'],
+                    'body': row.get('body', ''),
+                    'author': row['author'],
+                    'subreddit': row['subreddit'],
+                    'score': row['score'],
+                    'created': str(row['created']),
+                    's3_url': s3_url,
+                    'namespace': namespace  # Use fixed namespace
+                }
+
+                # Add text with metadata
+                vector_store.add_texts(
+                    texts=[full_text],
+                    ids=[row['id']],
+                    metadatas=[metadata]
+                )
+                
                 # Prepare post data for database
                 post_data = {
                     'id': row['id'],
@@ -244,13 +256,24 @@ class RedditDataProcessor:
                     'score': row['score'],
                     'created': row['created'],
                     's3_url': s3_url,
-                    'vector_id': row['id'],  # Pinecone index name
+                    'vector_id': f"{namespace}_{row['id']}",  # Include fixed namespace
+                    'namespace': namespace  # Use fixed namespace
                 }
                 
                 # Insert into database
                 self.insert_reddit_article(post_data)
                 
-                print(f"Processed post: {row['title']}")
+                print(f"Processed post in {namespace} namespace: {row['title']}")
             
             except Exception as e:
                 print(f"Error processing post: {e}")
+
+# Usage example
+if __name__ == "__main__":
+    # Example of how to use the class
+    processor = RedditDataProcessor()
+    
+    # Assuming you have a DataFrame with Reddit post data
+    # df = pd.read_csv('reddit_posts.csv')
+    # processor.process_reddit_data(df)
+    pass
