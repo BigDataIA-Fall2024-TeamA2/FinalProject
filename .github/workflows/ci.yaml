@@ -1,0 +1,31 @@
+name: Python Testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: |
+          pip install poetry
+
+      - name: Install dependencies
+        run: |
+          poetry install --no-interaction --no-root --with frontend,backend
+
+      - name: Run tests
+        run: |
+          poetry run pytest --cov=.
