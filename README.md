@@ -2,8 +2,8 @@
 
 ## Links
 - [Codelab Documentation](https://codelabs-preview.appspot.com/?file_id=1_3vmWoFDZWP4ZyiS7CvwQDF8ZwlRLUFJcXMgObKIjLE#0)
-- [Deployed Streamlit Application](http://54.166.164.60:8501)
-- [Deployed FastAPI Backend](http://54.166.164.60:8000/docs)
+- [Deployed Streamlit Application](http://52.207.245.36:8501/)
+- [Deployed FastAPI Backend](http://52.207.245.36:8000/docs)
 - [Demo Video](video/video.mov)
 
 ## Objective
