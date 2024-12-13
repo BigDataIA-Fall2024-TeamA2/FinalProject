@@ -84,8 +84,8 @@ class RedditScraper:
         sort_by: str = 'top',
         time_filter: str = 'year',
         limit: int = 1000,
-        include_comments: bool = False,
-        comments_limit: int = 5
+        include_comments: bool = True,
+        comments_limit: int = 25
     ) -> pd.DataFrame:
         try:
             subreddit = self.reddit.subreddit(subreddit_name)
@@ -145,7 +145,7 @@ class RedditScraper:
                 for comment in submission.comments[:comments_limit]
                 if not isinstance(comment, MoreComments)
             ]
-            print(a)
+            # print(a)
             return a
         except Exception:
             return []
@@ -196,7 +196,7 @@ class RedditScraper:
         subreddits: List[str],
         sort_by: str = 'top',
         time_filter: str = 'year',
-        limit: int = 1000,
+        limit: int = 5,
         max_workers: int = 4
     ) -> pd.DataFrame:
         """
