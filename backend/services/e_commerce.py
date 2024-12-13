@@ -23,8 +23,3 @@ def fetch_listings_amazon(search_term: str) -> list:
         'start_page': 1,
 
     }
-
-
-    # Instead of response with job status and results url, this will return the
-    # JSON response with results.
-    pprint(response.json())

@@ -1,15 +1,12 @@
+import logging
+
 from langchain_community.retrievers import ArxivRetriever
 from langchain_community.tools import TavilySearchResults
 from langchain_core.language_models import BaseChatModel
-from langchain_core.vectorstores import VectorStoreRetriever
 
-from backend.agent import GraphState, Retriever
+from backend.agent.vector_store import Retriever
 from backend.agent.generate_chain import create_generate_chain
-from backend.agent.graph import Steps
-
-from langchain.schema import Document
-
-import logging
+from backend.agent.graph import Steps, GraphState
 
 logger = logging.getLogger(__name__)
 

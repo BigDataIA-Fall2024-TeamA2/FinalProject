@@ -1,6 +1,7 @@
+from langchain import hub
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
-from langchain import hub
+
 
 class GraderUtils:
     def __init__(self, llm):

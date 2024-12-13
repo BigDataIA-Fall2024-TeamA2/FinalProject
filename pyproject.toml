@@ -17,6 +17,10 @@ fastapi = "^0.115.6"
 uvicorn = "^0.32.1"
 python-jose = "^3.3.0"
 requests = "^2.32.3"
+langgraph = "^0.2.59"
+boto3 = "^1.35.80"
+passlib = "^1.7.4"
+pydantic = {extras = ["email"], version = "^2.10.3"}
 
 [build-system]
 requires = ["poetry-core"]

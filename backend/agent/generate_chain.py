@@ -21,6 +21,16 @@ def create_generate_chain(llm):
     {prompt}
     
     Answer:  """
+    # Extract +ve feedback from user and use it to improve the response. brands, products and return in json format
+    """
+    
+    {
+        "Brands": ["Sony", "Senheiser" ],
+        "Products": [ "WH-1000MX4", "MDR-Z7"]
+    }
+    
+    
+    """
 
     generate_prompt = PromptTemplate(template=generate_template, input_variables=["prompt", "resources"])
 

@@ -1,34 +1,35 @@
 from langchain_openai import OpenAIEmbeddings
-
-from llama_index.core import VectorStoreIndex
-from llama_index.core.indices.vector_store import VectorIndexRetriever
-from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
-from llama_index.vector_stores.pinecone import PineconeVectorStore
+from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
 
 from backend.config import settings
 
-# Use llama-index to retrieve docs as they were indexed using same strategy
+
 def get_pinecone_vector_store():
+    """
+    Create pinecone vector store using langchain tooling
+    :return:
+    """
     embeddings = OpenAIEmbeddings(model=settings.OPENAI_EMBEDDINGS_MODEL, api_key=settings.OPENAI_API_KEY)
     pinecone_client = Pinecone(api_key=settings.PINECONE_API_KEY)
     pinecone_index = pinecone_client.Index(settings.PINECONE_INDEX_NAME)
-    vector_store = PineconeVectorStore(pinecone_index=pinecone_index)
-    vector_index = VectorStoreIndex.from_vector_store(vector_store=vector_store, embed_model=embeddings)
+    vector_store = PineconeVectorStore(index=pinecone_index, embedding=embeddings)
 
-    return vector_index
+    return vector_store
+
+
 
 class Retriever:
-    def __init__(self, vector_store):
+    def __init__(self, vector_store: PineconeVectorStore):
         self.vector_store = vector_store
         # self.vector_store = VectorIndexRetriever(index=vector_store, similarity_top_k=5)
 
-    def sim_search(self, query, article_id):
-        retriever = VectorIndexRetriever(index=self.vector_store, similarity_top_k=5,
-                                         filters=MetadataFilters(filters=[MetadataFilter(key="doc_id", operator=FilterOperator.EQ, value=article_id)]))
-        response = retriever.retrieve(query)
-        return [i.get_content() for i in response]
-
+    def sim_search(self, prompt: str):
+        # retriever = VectorIndexRetriever(index=self.vector_store, similarity_top_k=5,
+        #                                  filters=MetadataFilters(filters=[MetadataFilter(key="doc_id", operator=FilterOperator.EQ, value=article_id)]))
+        # response = retriever.retrieve(query)
+        # return [i.get_content() for i in response]
+        return self.vector_store.similarity_search(prompt, k=5)
 
 # def create_vector_store(docs, store_path: Optional[str] = None) -> FAISS:
 #     """

@@ -1,8 +1,6 @@
-from dataclasses import dataclass
 from enum import StrEnum
 
 from typing_extensions import TypedDict
-from typing import List
 
 
 class GraphStep(TypedDict):

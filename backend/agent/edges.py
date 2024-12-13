@@ -1,4 +1,4 @@
-from backend.agent import GraphState
+from backend.agent.graph import GraphState
 
 
 class GraphEdges:

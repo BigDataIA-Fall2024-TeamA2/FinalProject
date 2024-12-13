@@ -1,9 +1,6 @@
-from typing import List
-
-from fastapi import APIRouter, status, HTTPException, Depends
+from fastapi import APIRouter
 
 from backend.schemas.chat import QARequest
-from backend.services.auth_bearer import get_current_user_id
 from backend.services.chat import (
     process_qa_query,
 )
