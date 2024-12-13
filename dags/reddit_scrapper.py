@@ -5,6 +5,8 @@ import datetime as dt
 from typing import List, Optional, Dict
 from dotenv import load_dotenv
 from praw.models import MoreComments
+import concurrent.futures
+from typing import List
 
 class RedditScraper:
     """
@@ -81,29 +83,14 @@ class RedditScraper:
         subreddit_name: str,
         sort_by: str = 'top',
         time_filter: str = 'year',
-        limit: int = 10,
-        include_comments: bool = True,
-        comments_limit: int = 10
+        limit: int = 1000,
+        include_comments: bool = False,
+        comments_limit: int = 5
     ) -> pd.DataFrame:
-        """
-        Scrape posts from a specified subreddit with advanced configuration.
-        
-        Args:
-            subreddit_name (str): Name of the subreddit to scrape
-            sort_by (str, optional): Sorting method. Defaults to 'top'.
-            time_filter (str, optional): Time filter for sorting. Defaults to 'week'.
-            limit (int, optional): Number of posts to retrieve. Defaults to 100.
-            include_comments (bool, optional): Whether to include comments. Defaults to True.
-            comments_limit (int, optional): Number of comments to retrieve per post. Defaults to 10.
-        
-        Returns:
-            pd.DataFrame: DataFrame containing scraped post information
-        """
         try:
-            # Select the subreddit
             subreddit = self.reddit.subreddit(subreddit_name)
-
-            # Select sorting method
+            
+            # Use generator methods to reduce memory consumption
             sorting_methods = {
                 'top': subreddit.top(time_filter=time_filter, limit=limit),
                 'hot': subreddit.hot(limit=limit),
@@ -115,79 +102,65 @@ class RedditScraper:
             if not posts:
                 raise ValueError(f"Invalid sort method: {sort_by}")
 
-            # Prepare data collection
-            topics_dict = {
-                "title": [],
-                "score": [],
-                "id": [],
-                "url": [],
-                "comments_num": [],
-                "created": [],
-                "author": [],
-                "body": [],
-                "subreddit": [],
-                "comments": [],
-            }
+            # Use list comprehension for faster data collection
+            topics_data = [
+                {
+                    "title": submission.title,
+                    "score": submission.score,
+                    "id": submission.id,
+                    "url": submission.url,
+                    "comments_num": submission.num_comments,
+                    "created": dt.datetime.fromtimestamp(submission.created),
+                    "author": str(submission.author) if submission.author else "Deleted",
+                    "body": submission.selftext or "No body text",
+                    "subreddit": subreddit_name,
+                    "comments": (
+                        self._extract_comments(submission, comments_limit) 
+                        if include_comments else []
+                    )
+                }
+                for submission in posts
+            ][:limit]  # Ensure we don't exceed limit
 
-            # Collect post data
-            for submission in posts:
-                # Extract post details
-                topics_dict["title"].append(submission.title)
-                topics_dict["score"].append(submission.score)
-                topics_dict["id"].append(submission.id)
-                topics_dict["url"].append(submission.url)
-                topics_dict["comments_num"].append(submission.num_comments)
-                topics_dict["created"].append(
-                    dt.datetime.fromtimestamp(submission.created)
-                )
-                topics_dict["author"].append(
-                    str(submission.author) if submission.author else "Deleted"
-                )
-                topics_dict["body"].append(
-                    submission.selftext if submission.selftext else "No body text"
-                )
-                topics_dict["subreddit"].append(subreddit_name)
+            df = pd.DataFrame(topics_data)
+            print(f"Scraped {len(df)} posts from r/{subreddit_name}")
+            return df
 
-                # Collect comments if enabled
-                if include_comments:
-                    comment_texts = []
-                    submission.comments.replace_more(limit=0)  # Expand comment trees
-                    for comment in submission.comments.list()[:comments_limit]:
-                        if not isinstance(comment, MoreComments):
-                            comment_texts.append({
-                                'text': comment.body,
-                                'score': comment.score,
-                                'author': str(comment.author)
-                            })
-                    topics_dict["comments"].append(comment_texts)
-                else:
-                    topics_dict["comments"].append([])
-
-            # Convert to DataFrame
-            return pd.DataFrame(topics_dict)
-
-        except praw.exceptions.PRAWException as e:
-            print(f"Reddit API Error: {e}")
-            return pd.DataFrame()
         except Exception as e:
-            print(f"Unexpected error occurred: {e}")
+            print(f"Error scraping {subreddit_name}: {e}")
             return pd.DataFrame()
 
+    def _extract_comments(self, submission, comments_limit=5):
+        """
+        Efficiently extract comments with minimal overhead
+        """
+        try:
+            # submission.comments.replace_more(limit=0)
+            a = [
+                {
+                    'text': comment.body,
+                    'score': comment.score,
+                    'author': str(comment.author)
+                }
+                for comment in submission.comments[:comments_limit]
+                if not isinstance(comment, MoreComments)
+            ]
+            print(a)
+            return a
+        except Exception:
+            return []
+
+
+        
     def save_to_file(
         self,
         dataframe: pd.DataFrame,
         base_filename: str = 'reddit_data',
         output_dir: str = 'output',
-        formats: List[str] = ['csv', 'xlsx']
+        formats: List[str] = ['csv', 'json']
     ) -> None:
         """
-        Save DataFrame to multiple file formats with flexible options.
-        
-        Args:
-            dataframe (pd.DataFrame): DataFrame to save
-            base_filename (str, optional): Base filename for output files
-            output_dir (str, optional): Directory to save files
-            formats (List[str], optional): File formats to save. Defaults to CSV and Excel
+        Enhanced file saving method with better error handling
         """
         if dataframe.empty:
             print("No data to save.")
@@ -218,34 +191,43 @@ class RedditScraper:
         except Exception as e:
             print(f"Error saving files: {e}")
 
-    def scrape_multiple_subreddits(
+    def scrape_multiple_subreddits_concurrent(
         self,
         subreddits: List[str],
         sort_by: str = 'top',
-        time_filter: str = 'week',
-        limit: int = 100
+        time_filter: str = 'year',
+        limit: int = 1000,
+        max_workers: int = 4
     ) -> pd.DataFrame:
         """
-        Scrape multiple subreddits and combine their data.
+        Scrape multiple subreddits concurrently
         
         Args:
-            subreddits (List[str]): List of subreddit names to scrape
-            sort_by (str, optional): Sorting method. Defaults to 'top'.
-            time_filter (str, optional): Time filter for sorting. Defaults to 'week'.
-            limit (int, optional): Number of posts to retrieve per subreddit. Defaults to 100.
-        
-        Returns:
-            pd.DataFrame: Combined DataFrame of posts from multiple subreddits
+            subreddits: List of subreddit names
+            max_workers: Number of concurrent threads
         """
-        combined_data = []
-
-        for subreddit_name in subreddits:
-            subreddit_data = self.scrape_subreddit(
-                subreddit_name,
-                sort_by=sort_by,
-                time_filter=time_filter,
-                limit=limit
-            )
-            combined_data.append(subreddit_data)
-
-        return pd.concat(combined_data, ignore_index=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit scraping tasks for each subreddit
+            future_to_subreddit = {
+                executor.submit(
+                    self.scrape_subreddit, 
+                    subreddit_name=subreddit,
+                    sort_by=sort_by,
+                    time_filter=time_filter,
+                    limit=limit
+                ): subreddit 
+                for subreddit in subreddits
+            }
+            
+            # Collect results
+            combined_data = []
+            for future in concurrent.futures.as_completed(future_to_subreddit):
+                subreddit = future_to_subreddit[future]
+                try:
+                    subreddit_data = future.result()
+                    if not subreddit_data.empty:
+                        combined_data.append(subreddit_data)
+                except Exception as exc:
+                    print(f'{subreddit} generated an exception: {exc}')
+        
+        return pd.concat(combined_data, ignore_index=True) if combined_data else pd.DataFrame()
