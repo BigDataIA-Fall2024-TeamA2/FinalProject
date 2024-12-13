@@ -6,7 +6,7 @@ from frontend.utils.chat import (
     get_openai_model_choices,
     get_categories,
     search_initial,
-    search_product_listings
+    search_product_listings, fetch_chat_sessions
 )
 
 load_dotenv()
@@ -20,16 +20,21 @@ def qa_interface():
         ]
     if "recommended_products" not in st.session_state:
         st.session_state.recommended_products = []
+    if "chat_session_id" not in st.session_state:
+        st.session_state.chat_session_id = None
 
     # Fetch models/categories
     models = get_openai_model_choices() or []
     categories = get_categories() or []
+    chat_sessions = ["New Chat"] + fetch_chat_sessions()
 
     # Sidebar
     with st.sidebar:
         st.title("🔧 Settings")
         model = st.selectbox("Model", models if models else ["gpt-3.5-turbo"])
         category = st.selectbox("Category", categories if categories else ["general"])
+        selected_chat_session = st.selectbox("Chat Session", options=chat_sessions)
+
         if st.button("Clear Chat"):
             st.session_state.chat_history = [
                 {"role": "assistant", "content": "Hello! How can I help you today?"}
@@ -55,7 +60,7 @@ def qa_interface():
         if len(user_messages) == 1:
             # First user query -> call /search/initial
             with st.spinner("Performing initial search..."):
-                response = search_initial(model, prompt, category)
+                response = search_initial(model, prompt, category, selected_chat_session, st.session_state.chat_history)
                 st.write("Debug: Raw response from search_initial:", response)
 
                 if isinstance(response, dict):

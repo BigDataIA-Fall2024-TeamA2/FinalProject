@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.schemas.search import InitialSearchRequest, Product, SearchQuery, InitialSearchResponse
 from backend.services.auth_bearer import get_current_user_id
-from backend.services.search import process_initial_search_query, fetch_google_shopping_results, extract_product_details
+from backend.services.search import process_initial_search_query, fetch_google_shopping_results, \
+    extract_product_details, get_chat_sessions_for_user
 
 search_router = APIRouter(prefix="/search", tags=["search"])
 
@@ -22,7 +23,7 @@ def search_products(query: SearchQuery):
 async def initial_search(
     request: InitialSearchRequest, user_id: int = Depends(get_current_user_id)
 ) -> InitialSearchResponse:
-    return await process_initial_search_query(request.model, request.prompt, request.category, user_id)
+    return await process_initial_search_query(request.model, request.prompt, request.category, request.chat_session_id, user_id)
 
 """
     Initial Search -> List[Products]
@@ -38,3 +39,8 @@ async def initial_search(
     
     Refined Search -> 
 """
+
+
+@search_router.get("/chat-sessions")
+async def list_chat_sessions(user_id: int = Depends(get_current_user_id)):
+    return await get_chat_sessions_for_user(user_id)

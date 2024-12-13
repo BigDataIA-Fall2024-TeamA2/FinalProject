@@ -1,11 +1,14 @@
+import json
 import logging
 
 from langchain_community.tools import TavilySearchResults
 from langchain_core.language_models import BaseChatModel
+from langgraph.errors import create_error_message
 
 from backend.agent.generate_chain import create_recommendation_chain
 from backend.agent.graph import Steps, GraphState
 from backend.agent.vector_store import Retriever
+from backend.database.messages import create_message, MessageSenderEnum
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,16 @@ class GraphNodes:
 
         # RAG generation
         generation = self.generate_chain.invoke({"resources": '\n'.join(f"{index + 1}. {item}" for index, item in enumerate(resources)), "prompt": prompt})
+
+
+        tools_used = ["vector_search"]
+        if state.get("perform_web_search", False):
+            tools_used.append("web_search")
+
+        create_message(content=prompt, chat_session_id=state["chat_session_id"], references=[], sender=MessageSenderEnum.USER,
+                       tools_used=tools_used)
+        create_message(content=json.dumps(generation.model_dump(mode="json")), chat_session_id=state["chat_session_id"], references=[r for r in resources],
+                       sender=MessageSenderEnum.SYSTEM, tools_used=tools_used)
 
         state["generation"] = generation
         state["steps"].append(Steps.LLM_GENERATION.value)
