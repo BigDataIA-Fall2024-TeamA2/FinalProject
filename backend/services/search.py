@@ -1,14 +1,15 @@
-from backend.agent import agent_workflow
-
+from typing import List, Dict
 
 import requests
-from typing import List, Dict
+
+from backend.agent import agent_workflow
 from backend.config import settings
+from backend.schemas.search import InitialSearchResponse
 
 
 async def process_initial_search_query(
     model: str, prompt: str, category: str, user_id: int
-):
+) -> InitialSearchResponse:
     response = agent_workflow.invoke({"prompt": prompt, "category": category})
 
     print(response["steps"])
@@ -17,10 +18,10 @@ async def process_initial_search_query(
     if response.get("perform_web_search", False):
         tools_used.append("web_search")
 
-    return {
-        "response": response["generation"],
-        "tools_used": ", ".join(tools_used),
-    }
+    return InitialSearchResponse(
+        response=response["generation"],
+        tools_used=tools_used
+    )
 
 def fetch_google_shopping_results(search_term: str) -> Dict:
     payload = {

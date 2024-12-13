@@ -2,7 +2,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 from backend.agent.edges import GraphEdges
-from backend.agent.generate_chain import create_generate_chain
+from backend.agent.generate_chain import create_recommendation_chain
 from backend.agent.grader import GraderUtils
 from backend.agent.graph import GraphState
 from backend.agent.nodes import GraphNodes
@@ -14,15 +14,11 @@ from backend.utils import get_tavily_web_search_tool
 def compile_graph():
 
     # Vector Store
-    vector_store = get_pinecone_vector_store()
-    # retriever = vector_store.as_retriever(
-    #     search_type="similarity",
-    #     search_args={"k": 4}
-    # )
-    retriever = Retriever(vector_store=vector_store)
+    _vector_store = get_pinecone_vector_store()
+    retriever = Retriever(vector_store=_vector_store)
 
     # LLM
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, openai_api_key=settings.OPENAI_API_KEY)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.5, openai_api_key=settings.OPENAI_API_KEY)
 
     # Evaluation - Grader
     grader = GraderUtils(llm=llm)
@@ -32,9 +28,7 @@ def compile_graph():
     web_search_tool = get_tavily_web_search_tool()
 
     graph_nodes = GraphNodes(
-        llm=llm, retriever=retriever, retrieval_grader=retrieval_grader, web_search_tool=web_search_tool,
-        paper_search_tool=None
-    )
+        llm=llm, retriever=retriever, retrieval_grader=retrieval_grader, web_search_tool=web_search_tool)
     graph_edges = GraphEdges(None, None)
 
     # Build workflow

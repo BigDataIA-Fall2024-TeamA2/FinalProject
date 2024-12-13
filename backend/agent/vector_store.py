@@ -1,3 +1,4 @@
+from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
@@ -22,61 +23,11 @@ def get_pinecone_vector_store():
 class Retriever:
     def __init__(self, vector_store: PineconeVectorStore):
         self.vector_store = vector_store
-        # self.vector_store = VectorIndexRetriever(index=vector_store, similarity_top_k=5)
 
     def sim_search(self, prompt: str, namespace: str | None):
-        # retriever = VectorIndexRetriever(index=self.vector_store, similarity_top_k=5,
-        #                                  filters=MetadataFilters(filters=[MetadataFilter(key="doc_id", operator=FilterOperator.EQ, value=article_id)]))
-        # response = retriever.retrieve(query)
-        # return [i.get_content() for i in response]
-        return self.vector_store.similarity_search(prompt, k=6, namespace=namespace if namespace else "")
+        top_matched_docs = self.vector_store.similarity_search(prompt, k=6, namespace=namespace if namespace else "")
+        return self._rerank_docs(top_matched_docs)
 
-# def create_vector_store(docs, store_path: Optional[str] = None) -> FAISS:
-#     """
-#     Creates a FAISS vector store from a list of documents.
-#
-#     Args:
-#         docs (List[Document]): A list of Document objects containing the content to be stored.
-#         store_path (Optional[str]): The path to store the vector store locally. If None, the vector store will not be stored.
-#
-#     Returns:
-#         FAISS: The FAISS vector store containing the documents.
-#     """
-#     # Creating text splitter
-#     text_splitter = RecursiveCharacterTextSplitter(
-#         chunk_size=1000,
-#         chunk_overlap=200,
-#     )
-#
-#     texts = text_splitter.split_documents(docs)
-#
-#     # Embedding object
-#     embedding_model = OpenAIEmbeddings()
-#
-#     # Create the FAISS vector store
-#     store = FAISS.from_documents(texts, embedding_model)
-#
-#     # Save the vector store locally if a path is provided
-#     if store_path:
-#         store.save_local(store_path)
-#
-#     return store
-#
-#
-# def get_local_store(store_path: str) -> FAISS:
-#     """
-#     Loads a locally stored FAISS vector store.
-#
-#     Args:
-#         store_path (str): The path where the FAISS vector store is stored locally.
-#
-#     Returns:
-#         FAISS: The loaded FAISS vector store.
-#     """
-#     # Load the embedding model
-#     embedding_model = OpenAIEmbeddings()
-#
-#     # Load the vector store from the local path
-#     store = FAISS.load_local(store_path, embedding_model)
-#
-#     return store
+    @staticmethod
+    def _rerank_docs(docs: list[Document]):
+        return sorted(docs, key=lambda d: d.metadata["score"], reverse=True)

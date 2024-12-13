@@ -1,9 +1,10 @@
 from pydantic import BaseModel, field_validator
 
+from backend.schemas.chain import SearchResult as LlmSearchResult
 from backend.services.choices import get_supported_product_categories
 
 
-class SearchRequest(BaseModel):
+class InitialSearchRequest(BaseModel):
     model: str
     prompt: str
     category: str
@@ -14,6 +15,11 @@ class SearchRequest(BaseModel):
         if v not in get_supported_product_categories():
             raise ValueError(f"{v} is not a supported product category.")
         return v
+
+
+class InitialSearchResponse(BaseModel):
+    response: LlmSearchResult
+    tools_used: list[str]
 
 
 class SearchQuery(BaseModel):

@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.schemas.search import SearchRequest, Product, SearchQuery
+from backend.schemas.search import InitialSearchRequest, Product, SearchQuery, InitialSearchResponse
 from backend.services.auth_bearer import get_current_user_id
 from backend.services.search import process_initial_search_query, fetch_google_shopping_results, extract_product_details
-
 
 search_router = APIRouter(prefix="/search", tags=["search"])
 
@@ -21,8 +20,8 @@ def search_products(query: SearchQuery):
     "/initial",
 )
 async def initial_search(
-    request: SearchRequest, user_id: int = Depends(get_current_user_id)
-):
+    request: InitialSearchRequest, user_id: int = Depends(get_current_user_id)
+) -> InitialSearchResponse:
     return await process_initial_search_query(request.model, request.prompt, request.category, user_id)
 
 """

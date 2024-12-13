@@ -1,25 +1,23 @@
 import logging
 
-from langchain_community.retrievers import ArxivRetriever
 from langchain_community.tools import TavilySearchResults
 from langchain_core.language_models import BaseChatModel
 
-from backend.agent.vector_store import Retriever
-from backend.agent.generate_chain import create_generate_chain
+from backend.agent.generate_chain import create_recommendation_chain
 from backend.agent.graph import Steps, GraphState
+from backend.agent.vector_store import Retriever
 
 logger = logging.getLogger(__name__)
 
 
 class GraphNodes:
-    def __init__(self, llm: BaseChatModel, retriever: Retriever, retrieval_grader, web_search_tool: TavilySearchResults, paper_search_tool: ArxivRetriever):
+    def __init__(self, llm: BaseChatModel, retriever: Retriever, retrieval_grader, web_search_tool: TavilySearchResults):
         self.llm = llm
         self.retriever = retriever
         self.retrieval_grader = retrieval_grader
         self.web_search_tool = web_search_tool
-        self.paper_search_tool = paper_search_tool
 
-        self.generate_chain = create_generate_chain(llm)
+        self.generate_chain = create_recommendation_chain(llm)
 
     def vector_store_retrieve(self, state):
         """
@@ -54,10 +52,12 @@ class GraphNodes:
         """
         print("---GENERATE---")
         prompt = state["prompt"]
-        resources = state["resources"]
+        # TODO: Handle Tavily web results by converting to Document
+        resources = [r.page_content if hasattr(r, "page_content") else r for r in state["resources"]]
 
         # RAG generation
-        generation = self.generate_chain.invoke({"resources": '\n\n'.join(f"{index + 1}. {item}" for index, item in enumerate(resources)), "prompt": prompt})
+        generation = self.generate_chain.invoke({"resources": '\n'.join(f"{index + 1}. {item}" for index, item in enumerate(resources)), "prompt": prompt})
+
         state["generation"] = generation
         state["steps"].append(Steps.LLM_GENERATION.value)
         return state
@@ -93,9 +93,6 @@ class GraphNodes:
         print("---GRADE VECTOR STORE DOCUMENTS---")
         return self._base_grade_documents(state, "vector_store")
 
-    def grade_paper_search_documents(self, state: GraphState):
-        return self._base_grade_documents(state, "paper_search")
-
     def web_search(self, state: GraphState):
         print("---WEB SEARCH - TAVILY---")
 
@@ -107,15 +104,6 @@ class GraphNodes:
         state["steps"].append(Steps.WEB_SEARCH_RETRIEVAL.value)
 
         print(state["resources"])
-        return state
-
-    def paper_search(self, state: GraphState):
-        prompt = state["prompt"]
-        arxiv_papers = self.paper_search_tool.invoke(prompt)
-        state["resources"] = [
-            paper.page_content for paper in arxiv_papers
-        ]
-        state["steps"].append(Steps.PAPER_SEARCH_RETRIEVAL.value)
         return state
 
     def transform_query(self, state):

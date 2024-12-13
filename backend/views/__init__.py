@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 
 from backend.views.auth import auth_router
-
 from backend.views.choices import choices_router
 from backend.views.search import search_router
 from backend.views.users import users_router

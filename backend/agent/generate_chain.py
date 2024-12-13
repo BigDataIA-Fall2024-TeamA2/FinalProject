@@ -1,11 +1,11 @@
-from platform import system
-
-from langchain.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.language_models import BaseChatModel
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
+from backend.schemas.chain import SearchResult
 
-def create_generate_chain(llm):
+
+def create_recommendation_chain(llm: BaseChatModel):
     """
     Creates a generate chain for answering code-related questions.
 
@@ -17,50 +17,39 @@ def create_generate_chain(llm):
     """
     system_prompt = """You are a product recommendation assistant that uses both user requirements and community discussions to identify and recommend products. You have just received several Reddit comment chunks discussing various products. Your job is to:
 
-1. Analyze the user's initial query and the retrieved Reddit documents to identify relevant products, brands, or categories that match the user's needs.
-2. Extract any product or brand mentions that are directly relevant to the user's criteria from the retrieved documents.
-3. Based on these findings, formulate a search query that could be sent to an external e-commerce API to fetch relevant product listings.
+- Analyze the user's initial query and the retrieved Reddit documents to identify relevant products, brands, or categories that match the user's needs.
+- Extract any product or brand mentions that are directly relevant to the user's criteria from the retrieved documents.
 
 Important details:
-- Focus only on product mentions and brands that align with the user’s stated needs.
-- If multiple products are mentioned, consider the ones that have the strongest endorsements or align best with the user’s criteria.
-- The output should be concise and structured.
+- Focus only on product mentions that align with the user’s stated needs and is positive in nature.
+- If multiple products are mentioned, consider all that align with the user’s criteria.
+- Do not limit or prioritize based on price or budget unless the user explicitly requests it. Include products from all price ranges.
 
-Your final response should include:
-- A short summary of the reasoning steps you took (one or two sentences).
-- A clear, structured list of products/brands identified.
-- A single search query string that can be used to retrieve products from the external e-commerce API. 
+Format the generated response in JSON format by wrapping the output in `json` tags\n{format_instructions}"""
 
-User’s query:
+    users_query="""User’s query:
 "{prompt}"
 
 Below are the top Reddit comment chunks returned from a similarity search:
 {resources}
 
-Using the above Reddit content and the user query, please identify the products and brands that fit the user’s needs and then produce a search query I can use to find relevant products from the e-commerce API.
-"""
+Using the above Reddit content and the user query, please identify the products and brands that fit the user’s needs without filtering by budget."""
 
 
-    generate_prompt = PromptTemplate(template=system_prompt, input_variables=["prompt", "resources"])
-    generate_chain = generate_prompt | llm | StrOutputParser()
-
-    return generate_chain
-
-    # Extract +ve feedback from user and use it to improve the response. brands, products and return in json format
-    # """
-    #
-    # {
-    #     "Brands": ["Sony", "Senheiser" ],
-    #     "Products": [ "WH-1000MX4", "MDR-Z7"]
-    # }
-    #
-    #
-    # """
-
-    # Create the generate chain
+    # generate_prompt = PromptTemplate(template=system_prompt, input_variables=["prompt", "resources"])
     # generate_chain = generate_prompt | llm | StrOutputParser()
-    #
-    # return generate_chain
+
+    parser = PydanticOutputParser(pydantic_object=SearchResult)
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", users_query),
+    ]).partial(format_instructions=parser.get_format_instructions())
+    prompt.input_variables = ["prompt", "resources"]
+
+    chain = prompt | llm | parser
+    return chain
+
 
 def create_e_commerce_chain(llm):
     ...

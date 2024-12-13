@@ -2,8 +2,7 @@ from functools import lru_cache
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import os
-from dotenv import load_dotenv
+
 
 class Settings(BaseSettings, extra="ignore"):
     # AWS
