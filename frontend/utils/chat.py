@@ -51,18 +51,39 @@ def get_pdf_object_from_db(pdf_filename: str, extraction_mechanism: str):
         method="GET",
         params={"filename": pdf_filename, "extraction-mechanism": extraction_mechanism},
     )
-def search_initial(model: str, prompt: str, category: str):
+def search_initial(model: str, prompt: str, category: str, chat_session_id: int | None, chat_history):
     # POST /search/initial
+    if chat_history:
+        prompt = " ".join([i["content"] for i in chat_history if i["role"] == "user"]) + prompt
+
+    print(chat_session_id)
+
     payload = {
         "model": model,
         "prompt": prompt,
-        "category": category
+        "category": category,
+        "chat_session_id": chat_session_id,
     }
     return make_authenticated_request(
         endpoint="/search/initial",
         method="POST",
         data=payload
     )
+
+def fetch_chat_sessions():
+    resp = make_authenticated_request(
+        endpoint="/search/chat-sessions",
+        method="GET"
+    )
+    resp1 =  sorted(resp.keys(), reverse=True, key=lambda d: int(d))
+    return [f"{k}: {resp[k]}" for k in resp1]
+
+
+def process_selected_chat_session(chat_session: str) -> int:
+    try:
+       return int(chat_session.split(":")[0]) if chat_session else None
+    except Exception:
+        return None
 
 def search_product_listings(query: str):
     # POST /search/product-listings

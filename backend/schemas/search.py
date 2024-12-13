@@ -8,16 +8,18 @@ class InitialSearchRequest(BaseModel):
     model: str
     prompt: str
     category: str
+    chat_session_id: int | None
 
-    @field_validator('category')
-    @classmethod
-    def _cat_supported(cls, v: str) -> str:
-        if v not in get_supported_product_categories():
-            raise ValueError(f"{v} is not a supported product category.")
-        return v
+    # @field_validator('category')
+    # @classmethod
+    # def _cat_supported(cls, v: str) -> str:
+    #     if v not in get_supported_product_categories():
+    #         raise ValueError(f"{v} is not a supported product category.")
+    #     return v
 
 
 class InitialSearchResponse(BaseModel):
+    chat_session_id: int
     response: LlmSearchResult
     tools_used: list[str]
 
