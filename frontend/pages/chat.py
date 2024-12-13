@@ -5,22 +5,47 @@ from frontend.utils.chat import (
     get_openai_model_choices,
     get_categories,
     search_initial,
-    search_product_listings, fetch_chat_sessions, process_selected_chat_session
+    search_product_listings,
+    fetch_chat_sessions,
+    process_selected_chat_session,
 )
 
 load_dotenv()
 
-def create_cards(product_list):
+def preprocess_products(raw_products):
+    """
+    Preprocess and validate the product list to ensure all necessary fields are present.
+    """
+    processed_products = []
+    for product in raw_products:
+        processed_products.append({
+            "title": product.get("title", "Product title unavailable"),
+            "price": product.get("price", "Price unavailable"),
+            "product_url": product.get("product_url", "#"),
+            "merchant_name": product.get("merchant_name", "Merchant unavailable"),
+        })
+    return processed_products
+
+def create_cards(product_list, title="Recommended Products"):
+    """
+    Create HTML cards for the product list with an optional title.
+    """
+    if not product_list:
+        return "<p>No products found.</p>"
+
+    all_rows_html = f"<h3>{title}</h3>"
     cards_per_row = 4
-    all_rows_html = ""
     for i in range(0, len(product_list), cards_per_row):
-        row_items = product_list[i : i + cards_per_row]
+        row_items = product_list[i: i + cards_per_row]
         row_html = '<div style="display: flex; gap: 10px; margin-bottom: 10px;">'
         for item in row_items:
-            title = item.get("title", "N/A")
-            price = item.get("price", "N/A")
+            # Extract product details safely with fallback values
+            title = item.get("title", "Product title unavailable")
+            price = item.get("price", "Price unavailable")
             product_url = item.get("product_url", "#")
-            merchant_name = item.get("merchant_name", "N/A")
+            merchant_name = item.get("merchant_name", "Merchant unavailable")
+
+            # Create card HTML
             card_html = f"""
             <div style="
                 flex: 1;
@@ -39,6 +64,7 @@ def create_cards(product_list):
             row_html += card_html
         row_html += "</div>"
         all_rows_html += row_html
+
     return all_rows_html
 
 def qa_interface():
@@ -55,18 +81,19 @@ def qa_interface():
         st.session_state.chat_session_id = None
 
     # Fetch models/categories
-    models = get_openai_model_choices() or []
-    categories = get_categories() or []
+    models = get_openai_model_choices() or ["gpt-3.5-turbo"]
+    categories = get_categories() or ["general"]
 
     # Sidebar
     with st.sidebar:
         st.title("🔧 Settings")
-        model = st.selectbox("Model", get_openai_model_choices() or ["gpt-3.5-turbo"])
-        category = st.selectbox("Category", get_categories() or ["general"])
-        selected_chat_session = st.selectbox("Chat Session", options=["New Chat"] + fetch_chat_sessions())
+        model = st.selectbox("Model", models)
+        category = st.selectbox("Category", categories)
+        selected_chat_session = st.selectbox(
+            "Chat Session", options=["New Chat"] + fetch_chat_sessions()
+        )
         if selected_chat_session:
             st.session_state.chat_session_id = process_selected_chat_session(selected_chat_session)
-
 
         if st.button("Clear Chat"):
             st.session_state.chat_history = [
@@ -75,7 +102,7 @@ def qa_interface():
             st.session_state.recommended_products = []
             st.rerun()
 
-    # Create main chat container
+    # Main chat container
     chat_container = st.container()
 
     # Handle user input
@@ -83,38 +110,54 @@ def qa_interface():
 
     # Display chat history and process new input
     with chat_container:
-        # Display existing chat history
         for message in st.session_state.chat_history:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        # Process new input
         if prompt:
-            # Display user message
+            # Add user prompt to chat history
             st.session_state.chat_history.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
 
-            user_messages = [m for m in st.session_state.chat_history if m["role"] == "user"]
-
-            if len(user_messages) == 1:
-                # Initial search
-                with st.spinner("Processing initial search..."):
+            # Perform initial search for every prompt
+            with st.spinner("Searching for recommendations..."):
+                try:
                     response = search_initial(model, prompt, category, selected_chat_session, st.session_state.chat_history)
+                    st.write("Debug: Initial search raw response:", response)  # Debugging RAG response
+
                     if isinstance(response, dict):
                         rag_output = response.get("response", {})
                         products = rag_output.get("products", [])
                         reasoning_summary = rag_output.get("reasoning_summary", "")
 
-                        if products:
-                            assistant_reply = "Based on the community discussions, here are some recommended products:\n\n"
-                            st.session_state.recommended_products = []
+                        # Handle empty or malformed product recommendations
+                        if not products:
+                            st.warning("No products found in initial search. Fetching direct product listings.")
+                        else:
+                            # Preprocess RAG products
+                            processed_products = [
+                                {
+                                    "title": product.get("product_name", "Product title unavailable"),
+                                    "price": "Price unavailable",
+                                    "product_url": "#",
+                                    "merchant_name": "Merchant unavailable",
+                                    "reason": product.get("reason_for_recommendation", "No reason provided."),
+                                }
+                                for product in products
+                            ]
 
-                            for idx, product in enumerate(products, start=1):
-                                product_name = product.get("product_name", "Unknown Product")
-                                reason = product.get("reason_for_recommendation", "No reason provided.")
-                                st.session_state.recommended_products.append(product_name)
-                                assistant_reply += f"**{idx}. {product_name}**\n{reason}\n\n"
+                            st.session_state.recommended_products = processed_products
+
+                            # Display recommendations
+                            assistant_reply = "Based on the community discussions, here are some recommended products:\n\n"
+                            for idx, product in enumerate(processed_products, start=1):
+                                assistant_reply += (
+                                    f"**{idx}. {product['title']}**\n"
+                                    f"Reason: {product['reason']}\n"
+                                    f"Price: {product['price']}\n"
+                                    f"Merchant: {product['merchant_name']}\n\n"
+                                )
 
                             if reasoning_summary:
                                 assistant_reply += f"**Reasoning Summary:** {reasoning_summary}"
@@ -123,33 +166,19 @@ def qa_interface():
                                 st.markdown(assistant_reply)
                             st.session_state.chat_history.append({"role": "assistant", "content": assistant_reply})
 
-                            # Process product listings for recommended products
-                            if st.session_state.recommended_products:
-                                st.divider()
-                                st.subheader("Buy These Recommended Products:")
-                                for product_name in st.session_state.recommended_products:
-                                    st.markdown(f"### {product_name}")
-                                    with st.spinner(f"Fetching product links for: {product_name}..."):
-                                        try:
-                                            pl_response = search_product_listings(product_name)
-                                            if isinstance(pl_response, list) and pl_response:
-                                                card_markdown = create_cards(pl_response[:5])
-                                                st.markdown(card_markdown, unsafe_allow_html=True)
-                                            st.write("---")
-                                        except Exception as e:
-                                            st.error(f"Error fetching products: {str(e)}")
-            else:
-                # Product search
-                with st.spinner("Searching products..."):
-                    response = search_product_listings(prompt)
-                    if isinstance(response, list) and response:
-                        with st.chat_message("assistant"):
-                            st.markdown("Here are some products I found:")
-                            card_markdown = create_cards(response[:5])
-                            st.markdown(card_markdown, unsafe_allow_html=True)
-                        st.session_state.chat_history.append(
-                            {"role": "assistant", "content": "Here are some products I found:"}
-                        )
+                            # Fetch product listings for each recommended product
+                            for product in processed_products:
+                                with st.spinner(f"Fetching product links for: {product['title']}..."):
+                                    try:
+                                        product_response = search_product_listings(product['title'])
+                                        if isinstance(product_response, list) and product_response:
+                                            additional_products = preprocess_products(product_response)
+                                            card_markdown = create_cards(additional_products[:5], title=f"Product Listings for {product['title']}")
+                                            st.markdown(card_markdown, unsafe_allow_html=True)
+                                    except Exception as e:
+                                        st.error(f"Error fetching products for {product['title']}: {e}")
+                except Exception as e:
+                    st.error(f"Error during initial search: {e}")
 
 if __name__ == "__main__":
     qa_interface()
