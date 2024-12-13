@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from backend.database import db_session
+from backend.database.db import db_session
 from backend.database.users import UserModel
 from backend.schemas.users import UserRequest, UserCreateRequest
 
