@@ -24,12 +24,12 @@ class Retriever:
         self.vector_store = vector_store
         # self.vector_store = VectorIndexRetriever(index=vector_store, similarity_top_k=5)
 
-    def sim_search(self, prompt: str):
+    def sim_search(self, prompt: str, namespace: str | None):
         # retriever = VectorIndexRetriever(index=self.vector_store, similarity_top_k=5,
         #                                  filters=MetadataFilters(filters=[MetadataFilter(key="doc_id", operator=FilterOperator.EQ, value=article_id)]))
         # response = retriever.retrieve(query)
         # return [i.get_content() for i in response]
-        return self.vector_store.similarity_search(prompt, k=5)
+        return self.vector_store.similarity_search(prompt, k=6, namespace=namespace if namespace else "")
 
 # def create_vector_store(docs, store_path: Optional[str] = None) -> FAISS:
 #     """

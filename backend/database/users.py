@@ -22,10 +22,10 @@ class UserModel(Base):
         primary_key=True,
         nullable=False,
     )
-    username = Column("username", String(16777216), nullable=False, unique=True)
-    password = Column("password", String(16777216), nullable=False)
-    email = Column("email", String(16777216), nullable=False)
-    full_name = Column("full_name", String(16777216), nullable=True)
+    username = Column("username", String, nullable=False, unique=True)
+    password = Column("password", String, nullable=False)
+    email = Column("email", String, nullable=False)
+    full_name = Column("full_name", String, nullable=True)
     active = Column("active", Boolean, server_default="TRUE")
     password_timestamp = Column("password_timestamp", Integer, nullable=True)
     created_at = Column(

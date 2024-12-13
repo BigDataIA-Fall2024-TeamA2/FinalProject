@@ -17,4 +17,4 @@ async def get_openai_model_choices() -> ChoicesResponse:
 
 @choices_router.get("/categories", response_model=ChoicesResponse)
 async def get_product_categories() -> ChoicesResponse:
-    return ChoicesResponse(choices=await get_supported_product_categories())
+    return ChoicesResponse(choices=get_supported_product_categories())

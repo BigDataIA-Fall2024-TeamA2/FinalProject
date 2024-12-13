@@ -33,10 +33,10 @@ class GraphNodes:
         """
         print("---RETRIEVE---")
         prompt = state["prompt"]
-        article_id = state["article_id"]
+        namespace = state["category"]
 
         # Retrieval
-        documents = self.retriever.sim_search(prompt, article_id)
+        documents = self.retriever.sim_search(prompt, namespace)
         state["resources"] = documents
         state["steps"] = [Steps.VECTOR_STORE_RETRIEVAL.value]
 
@@ -83,11 +83,8 @@ class GraphNodes:
         if next_search:
             match previous_state:
                 case "vector_store":
-                    state["perform_paper_search"] = True
-                    state["steps"].append(Steps.VECTOR_STORE_EVALUATION.value)
-                case "paper_search":
                     state["perform_web_search"] = True
-                    state["steps"].append(Steps.PAPER_SEARCH_EVALUATION.value)
+                    state["steps"].append(Steps.VECTOR_STORE_EVALUATION.value)
         state["resources"] = filtered_resources
 
         return state
@@ -100,12 +97,16 @@ class GraphNodes:
         return self._base_grade_documents(state, "paper_search")
 
     def web_search(self, state: GraphState):
+        print("---WEB SEARCH - TAVILY---")
+
         prompt = state["prompt"]
         web_results = self.web_search_tool.invoke({"query": prompt})
         state["resources"] = [
            result["content"] for result in web_results
         ]
         state["steps"].append(Steps.WEB_SEARCH_RETRIEVAL.value)
+
+        print(state["resources"])
         return state
 
     def paper_search(self, state: GraphState):

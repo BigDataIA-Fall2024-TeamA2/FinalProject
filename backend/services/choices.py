@@ -1,5 +1,5 @@
-async def get_supported_product_categories():
+def get_supported_product_categories():
     return [
-        "Headphones",
-        "Sneakers"
+        "headphoneadvice",
+        "sneakers"
     ]

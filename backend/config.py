@@ -39,8 +39,12 @@ class Settings(BaseSettings, extra="ignore"):
     # Tavily
     TAVILY_API_KEY: str
 
+    # OxyLabs
+    OXYLABS_USERNAME: str
+    OXYLABS_PASSWORD: str
+
     # Fast API config
-    APP_TITLE: str = "Multi Agent Report Generator"
+    APP_TITLE: str = "Rekomme - AI Powered Shopping Assistant"
     APP_VERSION: str = "0.1"
 
     # Logging Config
@@ -49,9 +53,6 @@ class Settings(BaseSettings, extra="ignore"):
     LOG_MAX_BYTES: int = 2000000  # Default to 2MB
     LOG_BACKUP_COUNT: int = 10
 
-
-    OXYLABS_USERNAME: str
-    OXYLABS_PASSWORD: str
     model_config = SettingsConfigDict(env_file=".env")
 
     @model_validator(mode="after")
