@@ -42,15 +42,15 @@ def main():
             formats=['csv', 'json']
         )
         
-        # # Process data in larger chunks
-        # for i in range(0, len(scraped_data), scrape_config['chunk_size']):
-        #     chunk = scraped_data.iloc[i:i+scrape_config['chunk_size']]
+        # Process data in larger chunks
+        for i in range(0, len(scraped_data), scrape_config['chunk_size']):
+            chunk = scraped_data.iloc[i:i+scrape_config['chunk_size']]
             
-        #     print(f"Processing chunk {i//scrape_config['chunk_size'] + 1}")
-        #     processor.process_reddit_data(chunk)
+            print(f"Processing chunk {i//scrape_config['chunk_size'] + 1}")
+            processor.process_reddit_data(chunk)
             
-        #     # Reduced delay between chunks
-        #     time.sleep(1)
+            # Reduced delay between chunks
+            time.sleep(1)
     
     except Exception as e:
         print(f"Error in main execution: {e}")

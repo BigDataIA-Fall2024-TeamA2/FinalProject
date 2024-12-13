@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 import pandas as pd
 import time
+import numpy as np
 
 # LangChain imports
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -14,6 +15,19 @@ from pinecone import Pinecone, ServerlessSpec
 import boto3
 import psycopg2
 from dotenv import load_dotenv
+
+class NumpyEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder to handle NumPy arrays and other non-serializable types
+    """
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        return super().default(obj)
 
 class RedditDataProcessor:
     def __init__(self):
@@ -45,7 +59,7 @@ class RedditDataProcessor:
         self._init_s3_client()
         self._init_pinecone()
         self._init_embedding_model()
-    
+        
     def _init_s3_client(self):
         """Initialize S3 client"""
         self.s3_client = boto3.client(
@@ -82,6 +96,7 @@ class RedditDataProcessor:
             model='text-embedding-3-small'
         )
     
+    
     def save_to_s3(self, content, filename):
         """
         Save content to S3 bucket
@@ -94,17 +109,115 @@ class RedditDataProcessor:
             str: S3 URL of saved object
         """
         try:
+            # Use custom JSON encoder to handle non-serializable types
+            serialized_content = json.dumps(content, cls=NumpyEncoder, default=str)
+            
             self.s3_client.put_object(
                 Bucket=self.aws_s3_bucket,
                 Key=filename,
-                Body=content.encode('utf-8'),
+                Body=serialized_content.encode('utf-8'),
                 ContentType='application/json'
             )
             return f"s3://{self.aws_s3_bucket}/{filename}"
         except Exception as e:
             print(f"Error uploading to S3: {e}")
             raise
-    
+
+    def process_reddit_data(self, dataframe):
+        """
+        Process Reddit data by:
+        1. Saving to S3
+        2. Creating vector embeddings
+        3. Storing in Pinecone with metadata in a specific namespace
+        4. Inserting into PostgreSQL
+        
+        Args:
+            dataframe (pd.DataFrame): DataFrame containing Reddit posts
+        """
+        # Explicitly set namespace
+        namespace = 'headphones'
+        
+        # Timestamp for S3 and tracking
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Process each post
+        for _, row in dataframe.iterrows():
+            try:
+                # Convert row to dictionary with safe serialization
+                row_dict = row.to_dict()
+                
+                # Safely handle comments and convert NumPy types
+                if 'comments' in row_dict:
+                    row_dict['comments'] = [
+                        {k: (v.tolist() if isinstance(v, np.ndarray) else v) 
+                         for k, v in comment.items()}
+                        for comment in row_dict['comments']
+                    ]
+                
+                # Combine title, body, and comments for embedding
+                comments_text = " ".join([
+                    f"Comment by {comment.get('author', 'Unknown')}: {comment.get('text', '')}" 
+                    for comment in row_dict.get('comments', [])
+                ])
+                full_text = f"{row_dict['title']} {row_dict.get('body', '')} {comments_text}"
+                
+                # Save raw data to S3
+                s3_key = f"reddit_posts/{timestamp}/{row_dict['id']}.json"
+                s3_url = self.save_to_s3(row_dict, s3_key)
+
+                vector_store = PineconeVectorStore(
+                    index=self.pc_index, 
+                    embedding=self.embeddings,
+                    namespace=namespace
+                )
+
+                # Prepare metadata for Pinecone
+                metadata = {
+                    'id': row_dict['id'],
+                    'title': row_dict['title'],
+                    'body': row_dict.get('body', ''),
+                    'author': row_dict['author'],
+                    'subreddit': row_dict['subreddit'],
+                    'score': row_dict['score'],
+                    'created': str(row_dict['created']),
+                    's3_url': s3_url,
+                    'namespace': namespace,
+                    'comments': json.dumps(row_dict.get('comments', []), cls=NumpyEncoder)
+                }
+
+                # Add text with metadata
+                vector_store.add_texts(
+                    texts=[full_text],
+                    ids=[row_dict['id']],
+                    metadatas=[metadata]
+                )
+                
+                # Prepare post data for database
+                post_data = {
+                    'id': row_dict['id'],
+                    'title': row_dict['title'],
+                    'body': row_dict.get('body', ''),
+                    'author': row_dict['author'],
+                    'subreddit': row_dict['subreddit'],
+                    'score': row_dict['score'],
+                    'created': row_dict['created'],
+                    's3_url': s3_url,
+                    'vector_id': f"{namespace}_{row_dict['id']}",
+                    'namespace': namespace,
+                    'comments': row_dict.get('comments', [])
+                }
+                
+                # Insert into database
+                self.insert_reddit_article(post_data)
+                
+                print(f"Processed post in {namespace} namespace: {row_dict['title']}")
+            
+            except Exception as e:
+                print(f"Error processing post: {e}")
+                # Optionally, print full traceback for debugging
+                import traceback
+                traceback.print_exc()
+
     def insert_reddit_article(self, post_data):
         """
         Insert Reddit post data into PostgreSQL
@@ -127,7 +240,7 @@ class RedditDataProcessor:
             
             cursor = conn.cursor()
             
-            # Create table if not exists
+            # Ensure table exists
             create_table_query = """
             CREATE TABLE IF NOT EXISTS reddit_posts (
                 id TEXT PRIMARY KEY,
@@ -139,7 +252,8 @@ class RedditDataProcessor:
                 created_at TIMESTAMP,
                 s3_url TEXT,
                 vector_id TEXT,
-                namespace TEXT
+                namespace TEXT,
+                comments JSONB
             );
             """
             cursor.execute(create_table_query)
@@ -147,16 +261,20 @@ class RedditDataProcessor:
             # Insert or update post
             insert_query = """
             INSERT INTO reddit_posts 
-            (id, title, body, author, subreddit, score, created_at, s3_url, vector_id, namespace)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (id, title, body, author, subreddit, score, created_at, s3_url, vector_id, namespace, comments)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET 
             title = EXCLUDED.title,
             body = EXCLUDED.body,
             score = EXCLUDED.score,
             s3_url = EXCLUDED.s3_url,
             vector_id = EXCLUDED.vector_id,
-            namespace = EXCLUDED.namespace;
+            namespace = EXCLUDED.namespace,
+            comments = EXCLUDED.comments;
             """
+            
+            # Use the custom JSON encoder to handle NumPy types
+            comments_json = json.dumps(post_data.get('comments', []), cls=NumpyEncoder)
             
             cursor.execute(insert_query, (
                 post_data.get('id', ''),
@@ -168,7 +286,8 @@ class RedditDataProcessor:
                 post_data.get('created', datetime.now()),
                 post_data.get('s3_url', ''),
                 post_data.get('vector_id', ''),
-                post_data.get('namespace', '')
+                post_data.get('namespace', ''),
+                comments_json
             ))
             
             conn.commit()
@@ -183,97 +302,3 @@ class RedditDataProcessor:
         finally:
             if conn:
                 conn.close()
-    
-    def process_reddit_data(self, dataframe):
-        """
-        Process Reddit data by:
-        1. Saving to S3
-        2. Creating vector embeddings
-        3. Storing in Pinecone with metadata in a specific namespace
-        4. Inserting into PostgreSQL
-        
-        Args:
-            dataframe (pd.DataFrame): DataFrame containing Reddit posts
-        """
-        # Text splitter for large documents
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
-        )
-        
-        # Explicitly set namespace
-        namespace = 'headphoneadvice'
-        
-        # Timestamp for S3 and tracking
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        # Process each post
-        for _, row in dataframe.iterrows():
-            try:
-                # Combine title and body for embedding
-                full_text = f"{row['title']} {row.get('body', '')}"
-                
-                # Save raw data to S3
-                s3_key = f"reddit_posts/{timestamp}/{row['id']}.json"
-                s3_url = self.save_to_s3(
-                    json.dumps(row.to_dict(), default=str), 
-                    s3_key
-                )
-
-                vector_store = PineconeVectorStore(
-                    index=self.pc_index, 
-                    embedding=self.embeddings,
-                    namespace=namespace  # Use fixed namespace
-                )
-
-                # Prepare metadata for Pinecone
-                metadata = {
-                    'id': row['id'],
-                    'title': row['title'],
-                    'body': row.get('body', ''),
-                    'author': row['author'],
-                    'subreddit': row['subreddit'],
-                    'score': row['score'],
-                    'created': str(row['created']),
-                    's3_url': s3_url,
-                    'namespace': namespace  # Use fixed namespace
-                }
-
-                # Add text with metadata
-                vector_store.add_texts(
-                    texts=[full_text],
-                    ids=[row['id']],
-                    metadatas=[metadata]
-                )
-                
-                # Prepare post data for database
-                post_data = {
-                    'id': row['id'],
-                    'title': row['title'],
-                    'body': row.get('body', ''),
-                    'author': row['author'],
-                    'subreddit': row['subreddit'],
-                    'score': row['score'],
-                    'created': row['created'],
-                    's3_url': s3_url,
-                    'vector_id': f"{namespace}_{row['id']}",  # Include fixed namespace
-                    'namespace': namespace  # Use fixed namespace
-                }
-                
-                # Insert into database
-                self.insert_reddit_article(post_data)
-                
-                print(f"Processed post in {namespace} namespace: {row['title']}")
-            
-            except Exception as e:
-                print(f"Error processing post: {e}")
-
-# Usage example
-if __name__ == "__main__":
-    # Example of how to use the class
-    processor = RedditDataProcessor()
-    
-    # Assuming you have a DataFrame with Reddit post data
-    # df = pd.read_csv('reddit_posts.csv')
-    # processor.process_reddit_data(df)
-    pass
