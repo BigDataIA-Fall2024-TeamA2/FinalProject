@@ -19,7 +19,7 @@ def scrape_reddit(**kwargs):
     scraper = RedditScraper()
     
     # Subreddits to scrape
-    subreddits = ['HeadphoneAdvice','SonyHeadphones','sennheiser','bose','Earbuds']
+    subreddits = ['HeadphoneAdvice']
     
     # Scraping configuration
     scrape_config = {
